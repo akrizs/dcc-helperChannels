@@ -54,6 +54,8 @@ import {
 
 import { MINGUILD } from "./types";
 
+import { moveChannel, openHelpChannel, closeHelpChannel } from "./actions";
+
 export default class HelpChannels extends Module {
   constructor(client: CookiecordClient) {
     super(client);
@@ -66,11 +68,59 @@ export default class HelpChannels extends Module {
       let guildCacheReady: boolean[] = await prepareGuildsCache(this.client);
 
       if (!guildCacheReady.some((b) => !b)) {
-        await this.client.guilds.cache.forEach(initiateOnBoot);
+        await Promise.all(this.client.guilds.cache.map(initiateOnBoot));
+        console.log(GUILDCOLLECTION);
       }
     } catch (error) {
       console.log(error);
       return;
+    }
+  }
+
+  @listener({ event: "message" })
+  async onMessage(msg: Message) {
+    if (msg.author.bot) {
+      return;
+    }
+    let GC: MINGUILD = GUILDCOLLECTION.get((msg.guild as Guild).id) as MINGUILD;
+    if (
+      msg.author.bot ||
+      !msg.guild ||
+      !msg.member ||
+      msg.channel.type !== "text" ||
+      !msg.channel.parentID ||
+      msg.channel.parentID !== GC.categories.get("ask")?.id ||
+      !msg.channel.name.startsWith(CHANNEL_PREFIX) ||
+      GC.busyChannels.has(msg.channel.id)
+    ) {
+      console.log("LEAVING MESSAGE EARLY!");
+      return;
+    } else {
+      await openHelpChannel(msg);
+    }
+    return;
+  }
+
+  @command({ aliases: ["resolve", "done", "close"] })
+  async resolved(msg: Message) {
+    let GC: MINGUILD = GUILDCOLLECTION.get((msg.guild as Guild).id) as MINGUILD;
+    // Also triggers on event: "message";
+    if (
+      msg.channel.type === "text" &&
+      (msg.channel.parentID !== GC.categories.get("ongoing")?.id ||
+        msg.channel.parentID !== GC.categories.get("dormant")?.id)
+    ) {
+      let lastPinned = (await msg.channel.messages.fetchPinned()).first();
+
+      if (msg.author.id === lastPinned?.author.id) {
+        if (GC.busyChannels.has(msg.channel.id)) {
+          // The channel is in a busychannel cache, make sure to move it out.
+          console.log("Before closeHelpChannel");
+          return await closeHelpChannel(msg);
+        }
+      } else {
+        return;
+      }
     }
   }
 }
@@ -117,7 +167,7 @@ class HelpChannelModule extends Module {
     }
   }
 
-  async moveChannel(channel: TextChannel, category: string) {
+  async moveChannel(guild: Guild, channel: TextChannel, category: string) {
     console.log(`Moving the channel: ${channel.name}`);
     const parent = channel.guild.channels.resolve(category);
     if (parent == null) return;

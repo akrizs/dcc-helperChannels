@@ -35,17 +35,16 @@ export async function prepareGuildsCache(
   );
 }
 
-export async function initiateOnBoot(guild: Guild): Promise<any> {
-  try {
-    let role = await createCoolDownRole(guild);
-
-    let categories = await createCategoriesNeeded(guild);
-
-    let channels = await createChannelsNeeded(guild);
-  } catch (error) {
-    // Handle the error more decent than console.log
-    console.log(error);
-  }
+export function initiateOnBoot(guild: Guild): Promise<any> {
+  return new Promise((res, rej) => {
+    createCoolDownRole(guild).then(() => {
+      createCategoriesNeeded(guild).then(() => {
+        createChannelsNeeded(guild).then(() => {
+          res(true);
+        });
+      });
+    });
+  });
 }
 
 export async function createCoolDownRole(guild: Guild): Promise<Role> {
@@ -155,7 +154,7 @@ export async function createChannelsNeeded(guild: Guild): Promise<any> {
         embed: AVAILABLE_EMBED,
       });
 
-      await msg.pin();
+      // await msg.pin();
 
       return channel;
     }
